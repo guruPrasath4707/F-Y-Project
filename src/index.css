@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+body {
+  background-color: #2e2e2e; /* Dark Gray */
+  color: #00ffff; /* Cyan */
+}
+
+.chat-message {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.user-message {
+  @apply ml-auto bg-blue-500 text-white p-3 rounded-lg max-w-xs shadow-lg;
+}
+
+.assistant-message {
+  @apply mr-auto bg-gray-700 text-white p-3 rounded-lg max-w-md shadow-lg; /* Broader width for assistant messages */
+}

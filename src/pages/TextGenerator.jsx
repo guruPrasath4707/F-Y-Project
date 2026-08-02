@@ -1,0 +1,58 @@
+// TextGenerator.jsx
+import React, { useState } from "react";
+import { generateText } from "../services/textApi";
+
+const TextGenerator = () => {
+  const [input, setInput] = useState("");
+  const [output, setOutput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleGenerate = async () => {
+    if (!input.trim()) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const generatedText = await generateText(input);
+      setOutput(generatedText);
+    } catch (error) {
+      console.error("Error generating text:", error);
+      setError("Failed to generate text. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-5">
+      <h1 className="text-3xl font-bold mb-6">Text Generator</h1>
+      <div className="w-full max-w-2xl">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          className="w-full p-3 rounded-md bg-gray-700 text-white outline-none mb-4"
+          placeholder="Describe what you need (e.g., 'Write a formal email to a client')"
+          rows="5"
+        />
+        <button
+          onClick={handleGenerate}
+          disabled={loading}
+          className={`w-full p-3 rounded-md ${loading ? "bg-gray-600" : "bg-blue-500 hover:bg-blue-600"} text-white`}
+        >
+          {loading ? "Generating..." : "Generate Text"}
+        </button>
+        {error && <div className="text-red-500 text-center mt-4">{error}</div>}
+        {output && (
+          <div className="mt-6 p-4 bg-gray-800 rounded-md">
+            <h2 className="text-xl font-bold mb-2">Generated Text:</h2>
+            <p className="whitespace-pre-wrap">{output}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default TextGenerator;
