@@ -12,7 +12,7 @@ import {
 const PROJECT_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const DIST_ROOT = resolve(PROJECT_ROOT, "dist");
 const API_KEY = process.env.GROQ_API_KEY;
-const MODEL = process.env.GROQ_MODEL || "mistral-saba-24b";
+const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const PORT = Number.parseInt(process.env.PORT || "3001", 10);
 const HOST = process.env.HOST || "127.0.0.1";
 const MAX_BODY_BYTES = 128 * 1024;

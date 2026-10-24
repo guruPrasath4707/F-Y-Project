@@ -7,6 +7,7 @@ const TextGenerator = () => {
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [copyStatus, setCopyStatus] = useState("");
 
   const handleGenerate = async () => {
     if (!input.trim() || loading) return;
@@ -14,6 +15,7 @@ const TextGenerator = () => {
     setLoading(true);
     setError(null);
     setOutput("");
+    setCopyStatus("");
 
     try {
       const generatedText = await generateText(input);
@@ -27,10 +29,26 @@ const TextGenerator = () => {
     }
   };
 
+  const handleCopy = async () => {
+    if (!navigator.clipboard?.writeText) {
+      setCopyStatus("Clipboard access is unavailable. Select the text and copy it manually.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(output);
+      setCopyStatus("Copied to clipboard.");
+    } catch {
+      setCopyStatus("Could not access the clipboard. Select the text and copy it manually.");
+    }
+  };
+
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-5">
       <div className="w-full max-w-2xl">
-        <Link to="/" className="inline-block mb-6 text-sm text-gray-300 hover:text-white">← Home</Link>
+        <Link to="/" className="inline-block mb-6 text-sm text-gray-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400">
+          ← Home
+        </Link>
         <h1 className="text-3xl font-bold mb-2">Text generator</h1>
         <p className="text-gray-400 mb-6">Describe the draft you need. You can revise it before using it.</p>
         <label htmlFor="text-prompt" className="block text-sm font-medium mb-2">Your prompt</label>
@@ -47,7 +65,7 @@ const TextGenerator = () => {
           type="button"
           onClick={handleGenerate}
           disabled={loading || !input.trim()}
-          className="w-full p-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium"
+          className="w-full p-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
         >
           {loading ? "Generating…" : "Generate text"}
         </button>
@@ -58,13 +76,14 @@ const TextGenerator = () => {
               <h2 className="text-lg font-semibold">Generated draft</h2>
               <button
                 type="button"
-                onClick={() => navigator.clipboard?.writeText(output)}
-                className="text-sm text-blue-300 hover:text-blue-200"
+                onClick={handleCopy}
+                className="text-sm text-blue-300 hover:text-blue-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
               >
                 Copy text
               </button>
             </div>
             <p className="whitespace-pre-wrap break-words">{output}</p>
+            {copyStatus && <p role="status" aria-live="polite" className="text-sm text-gray-300 mt-2">{copyStatus}</p>}
           </section>
         )}
       </div>

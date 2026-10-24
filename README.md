@@ -10,7 +10,7 @@ The browser UI is served by Vite during development. Requests to Groq go through
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 24 LTS
 - npm
 - A Groq API key for live AI responses: [Groq Console](https://console.groq.com/)
 
@@ -32,11 +32,11 @@ The browser UI is served by Vite during development. Requests to Groq go through
 
    ```dotenv
    GROQ_API_KEY=your_real_key_here
-   GROQ_MODEL=mistral-saba-24b
+   GROQ_MODEL=openai/gpt-oss-120b
    PORT=3001
    ```
 
-   Do not prefix the provider key with `VITE_`. Vite exposes variables with that prefix to browser code.
+   Do not prefix the provider key with `VITE_`. Vite exposes variables with that prefix to browser code. The default model is the currently listed Groq production model `openai/gpt-oss-120b`; you can set `GROQ_MODEL` to another model available to your Groq account.
 
 3. Start the API server in one terminal:
 
@@ -66,6 +66,8 @@ npm start
 
 The Node server serves files from `dist/` and handles the `/api` endpoints on the same origin. Set `HOST=0.0.0.0` when your deployment platform requires binding to an external interface. Keep `GROQ_API_KEY` in the hosting provider's server-side environment settings; never add it to frontend build variables.
 
+**Do not expose this API publicly as-is.** It has a small in-memory per-IP request limit, but no authentication, account-level quotas, or durable distributed rate limiting. Before public deployment, add an appropriate authentication/authorization layer and shared rate limits, and configure provider spending limits. Otherwise, unauthenticated visitors may consume the server owner's provider quota.
+
 ## Available API routes
 
 | Method | Route | Purpose |
@@ -74,8 +76,6 @@ The Node server serves files from `dist/` and handles the `/api` endpoints on th
 | POST | `/api/chat` | Generates a chat reply from a validated conversation |
 | POST | `/api/text` | Generates a draft from `{ "text": "..." }` |
 | POST | `/api/document` | Revises text from `{ "text": "..." }` |
-
-Requests are size-limited and input is validated. The server applies a small in-memory per-IP request limit; production deployments exposed to the public internet should add durable rate limiting and, where appropriate, user authentication.
 
 ## Quality checks
 
@@ -86,7 +86,7 @@ npm run build
 npm audit
 ```
 
-Dependabot is configured to propose weekly updates for npm packages and GitHub Actions. Review update PRs and their test/security results before merging rather than auto-merging dependency changes.
+GitHub Actions runs these checks on pushes and pull requests. Dependabot is configured to propose weekly updates for npm packages and GitHub Actions. Review update PRs and their test/security results before merging rather than auto-merging dependency changes.
 
 ## Security notes
 
