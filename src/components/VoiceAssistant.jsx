@@ -1,11 +1,33 @@
 import PropTypes from "prop-types";
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff } from "lucide-react";
 
 const VoiceAssistant = ({ onVoiceInput }) => {
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
   const debounceTimeout = useRef(null);
+
+  useEffect(() => () => {
+    if (debounceTimeout.current) {
+      window.clearTimeout(debounceTimeout.current);
+    }
+
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    if (!recognition) return;
+
+    // Detach callbacks before aborting so unmounting this control cannot
+    // schedule parent updates after the current page has been left.
+    recognition.onstart = null;
+    recognition.onend = null;
+    recognition.onresult = null;
+    recognition.onerror = null;
+    try {
+      recognition.abort();
+    } catch {
+      // Some browser implementations throw if recognition already stopped.
+    }
+  }, []);
 
   const handleVoiceClick = () => {
     if (listening) {
@@ -34,6 +56,7 @@ const VoiceAssistant = ({ onVoiceInput }) => {
 
       if (debounceTimeout.current) window.clearTimeout(debounceTimeout.current);
       debounceTimeout.current = window.setTimeout(() => {
+        debounceTimeout.current = null;
         onVoiceInput(text);
       }, 250);
     };
@@ -49,6 +72,7 @@ const VoiceAssistant = ({ onVoiceInput }) => {
     try {
       recognition.start();
     } catch {
+      recognitionRef.current = null;
       setListening(false);
       window.alert("Voice recognition could not start. Please try again.");
     }
