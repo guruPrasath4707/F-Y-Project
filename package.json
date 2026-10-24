@@ -9,7 +9,7 @@
     "start": "node server/index.js",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node --test server/validation.test.js",
+    "test": "node --test server/*.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
