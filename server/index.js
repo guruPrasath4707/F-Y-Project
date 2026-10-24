@@ -137,7 +137,6 @@ async function requestGroq(route, payload) {
   }
 
   if (!upstream.ok) {
-    // Deliberately do not send provider response bodies or credentials to the browser.
     console.error(`Groq request failed with HTTP ${upstream.status}.`);
     if (upstream.status === 429) {
       throw new HttpError(429, "The AI provider rate limit was reached. Please try again shortly.");
@@ -193,7 +192,6 @@ async function serveFrontend(request, response, pathname) {
     const fileInfo = await stat(candidate);
     if (fileInfo.isDirectory()) candidate = resolve(candidate, "index.html");
   } catch {
-    // Unmatched extension-less paths are client-side routes; asset paths must 404.
     if (extname(pathname)) {
       sendJson(response, 404, { error: "Not found." });
       return;
@@ -211,7 +209,7 @@ async function serveFrontend(request, response, pathname) {
     response.writeHead(200, {
       "Content-Type": contentTypes[extname(candidate)] || "application/octet-stream",
       "X-Content-Type-Options": "nosniff",
-      "Content-Security-Policy": "default-src 'self'; connect-src 'self' https://api.groq.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      "Content-Security-Policy": "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     });
     response.end(request.method === "HEAD" ? undefined : file);
   } catch {
@@ -256,9 +254,10 @@ const server = http.createServer(async (request, response) => {
       if (statusCode >= 500 && statusCode !== 503 && statusCode !== 504) {
         console.error("Unexpected API request error.");
       }
-      sendJson(response, statusCode, {
-        error: error instanceof Error ? error.message : "Unexpected server error.",
-      });
+      const publicMessage = statusCode === 500
+        ? "Unexpected server error."
+        : error instanceof Error ? error.message : "Unexpected server error.";
+      sendJson(response, statusCode, { error: publicMessage });
     }
     return;
   }
