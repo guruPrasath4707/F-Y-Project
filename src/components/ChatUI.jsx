@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Settings2, Volume2 } from "lucide-react";
 import VoiceAssistant from "./VoiceAssistant";
 import { fetchGroqResponse } from "../services/api";
+import { buildChatContext } from "../utils/chatContext";
 
 const ChatHistory = lazy(() => import("./ChatHistory"));
 
@@ -73,7 +74,10 @@ const ChatUI = () => {
     setError(null);
 
     try {
-      const assistantReply = await fetchGroqResponse(updatedMessages);
+      // Keep the visible transcript, but send only the newest context window
+      // permitted by server-side message and character limits.
+      const contextMessages = buildChatContext(updatedMessages);
+      const assistantReply = await fetchGroqResponse(contextMessages);
       const responseMessage = createMessage(assistantReply, "assistant");
       setMessages([...updatedMessages, responseMessage]);
       speakText(assistantReply);
