@@ -158,7 +158,8 @@ test("tampered session cookies are rejected", async () => {
   const { response, cookie } = await signIn();
   assert.equal(response.status, 200);
   const token = cookie.slice(cookie.indexOf("=") + 1);
-  const tampered = `ai_companion_session=${token.slice(0, -1)}x`;
+  const replacementFirstCharacter = token[0] === "A" ? "B" : "A";
+  const tampered = `ai_companion_session=${replacementFirstCharacter}${token.slice(1)}`;
 
   const session = await getSession(tampered);
   assert.equal(session.status, 200);
