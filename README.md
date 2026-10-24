@@ -83,7 +83,10 @@ Requests are size-limited and input is validated. The server applies a small in-
 npm test
 npm run lint
 npm run build
+npm audit
 ```
+
+Dependabot is configured to propose weekly updates for npm packages and GitHub Actions. Review update PRs and their test/security results before merging rather than auto-merging dependency changes.
 
 ## Security notes
 
