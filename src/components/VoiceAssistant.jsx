@@ -1,3 +1,4 @@
+import PropTypes from "prop-types";
 import { useState, useRef } from "react";
 import { Mic, MicOff } from "lucide-react";
 
@@ -66,6 +67,10 @@ const VoiceAssistant = ({ onVoiceInput }) => {
       {listening ? <MicOff size={24} aria-hidden="true" /> : <Mic size={24} aria-hidden="true" />}
     </button>
   );
+};
+
+VoiceAssistant.propTypes = {
+  onVoiceInput: PropTypes.func.isRequired,
 };
 
 export default VoiceAssistant;

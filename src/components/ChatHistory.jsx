@@ -1,3 +1,4 @@
+import PropTypes from "prop-types";
 import { memo, useEffect, useRef } from "react";
 
 const ChatHistory = memo(({ messages }) => {
@@ -33,5 +34,13 @@ const ChatHistory = memo(({ messages }) => {
 });
 
 ChatHistory.displayName = "ChatHistory";
+ChatHistory.propTypes = {
+  messages: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string,
+    text: PropTypes.string.isRequired,
+    sender: PropTypes.oneOf(["user", "assistant"]).isRequired,
+    timestamp: PropTypes.string.isRequired,
+  })).isRequired,
+};
 
 export default ChatHistory;

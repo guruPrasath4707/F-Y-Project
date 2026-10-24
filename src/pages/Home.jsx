@@ -13,7 +13,7 @@ const Home = () => {
           className="group p-6 bg-gray-800 border border-gray-700 rounded-xl text-left hover:border-blue-500 hover:bg-gray-800/80 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
         >
           <h2 className="text-xl font-semibold mb-2">Voice assistant</h2>
-          <p className="text-gray-400">Ask questions by typing or using your browser's microphone.</p>
+          <p className="text-gray-400">Ask questions by typing or using the microphone built into your browser.</p>
           <span className="mt-5 inline-block text-sm font-medium text-blue-300">Open conversation →</span>
         </Link>
         <Link
