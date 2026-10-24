@@ -1,12 +1,24 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "../components/AuthGate";
 
 const Home = () => {
+  const { authenticationRequired, logout } = useAuth();
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-5">
       <h1 className="text-4xl font-bold mb-8">AI Companion</h1>
-      <p className="text-gray-300 text-center max-w-xl mb-8">
+      <p className="text-gray-300 text-center max-w-xl mb-4">
         A focused workspace for conversation, first drafts, and clearer writing.
       </p>
+      {authenticationRequired && (
+        <button
+          type="button"
+          onClick={logout}
+          className="mb-8 rounded-lg border border-gray-600 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+        >
+          Sign out
+        </button>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl">
         <Link
           to="/chat"

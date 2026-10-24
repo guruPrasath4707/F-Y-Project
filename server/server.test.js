@@ -30,8 +30,10 @@ before(async () => {
     cwd: projectRoot,
     env: {
       ...process.env,
+      NODE_ENV: "test",
       PORT: String(port),
       HOST: "127.0.0.1",
+      AUTH_REQUIRED: "false",
       GROQ_API_KEY: "",
     },
     stdio: ["ignore", "ignore", "pipe"],

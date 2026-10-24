@@ -1,5 +1,6 @@
 import "dotenv/config";
 import http from "node:http";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,12 +14,30 @@ const PROJECT_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const DIST_ROOT = resolve(PROJECT_ROOT, "dist");
 const API_KEY = process.env.GROQ_API_KEY;
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+const AUTH_REQUIRED = process.env.NODE_ENV === "production" || process.env.AUTH_REQUIRED === "true";
+const ACCESS_PASSWORD = process.env.APP_ACCESS_PASSWORD || "";
+const SESSION_SECRET = process.env.SESSION_SECRET || "";
+const ACCESS_PASSWORD_DIGEST = ACCESS_PASSWORD
+  ? createHash("sha256").update(ACCESS_PASSWORD).digest()
+  : null;
+const SESSION_TTL_SECONDS = 8 * 60 * 60;
+const SESSION_COOKIE_NAME = "ai_companion_session";
+const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60_000;
+const LOGIN_RATE_LIMIT_ATTEMPTS = 8;
+if (AUTH_REQUIRED && (ACCESS_PASSWORD.length < 12 || Buffer.byteLength(ACCESS_PASSWORD) > 1024)) {
+  throw new Error("APP_ACCESS_PASSWORD must contain between 12 and 1024 characters when authentication is enabled.");
+}
+if (AUTH_REQUIRED && Buffer.byteLength(SESSION_SECRET) < 32) {
+  throw new Error("SESSION_SECRET must contain at least 32 bytes when authentication is enabled.");
+}
 const PORT = Number.parseInt(process.env.PORT || "3001", 10);
 const HOST = process.env.HOST || "127.0.0.1";
 const MAX_BODY_BYTES = 128 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_REQUESTS = 20;
 const requestBuckets = new Map();
+const loginBuckets = new Map();
+const activeSessions = new Map();
 
 class HttpError extends Error {
   constructor(statusCode, message) {
@@ -27,11 +46,12 @@ class HttpError extends Error {
   }
 }
 
-function sendJson(response, statusCode, payload) {
+function sendJson(response, statusCode, payload, extraHeaders = {}) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    ...extraHeaders,
   });
   response.end(JSON.stringify(payload));
 }
@@ -77,6 +97,126 @@ function readJsonBody(request) {
       rejectBody(new HttpError(400, "Could not read request body."));
     });
   });
+}
+
+function readCookie(request, cookieName) {
+  const entries = (request.headers.cookie || "").split(";");
+  for (const entry of entries) {
+    const separator = entry.indexOf("=");
+    if (separator < 0) continue;
+    if (entry.slice(0, separator).trim() === cookieName) {
+      return entry.slice(separator + 1).trim();
+    }
+  }
+  return null;
+}
+
+function createSessionToken(session) {
+  const payload = Buffer.from(JSON.stringify(session)).toString("base64url");
+  const signature = createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function getSession(request) {
+  if (!AUTH_REQUIRED) return null;
+
+  const token = readCookie(request, SESSION_COOKIE_NAME);
+  if (!token) return null;
+
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra !== undefined) return null;
+
+  const expectedSignature = createHmac("sha256", SESSION_SECRET).update(payload).digest();
+  const receivedSignature = Buffer.from(signature, "base64url");
+  if (receivedSignature.length !== expectedSignature.length) return null;
+  if (!timingSafeEqual(receivedSignature, expectedSignature)) return null;
+
+  let session;
+  try {
+    session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const activeExpiry = activeSessions.get(session?.sid);
+  if (
+    session?.v !== 1
+    || typeof session.sid !== "string"
+    || !Number.isInteger(session.exp)
+    || session.exp <= now
+    || activeExpiry !== session.exp
+  ) {
+    if (typeof session?.sid === "string" && activeExpiry && activeExpiry <= now) {
+      activeSessions.delete(session.sid);
+    }
+    return null;
+  }
+
+  return session;
+}
+
+function sessionCookie(token, maxAge) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`;
+}
+
+function clearSessionCookie() {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure}`;
+}
+
+function enforceLoginRateLimit(request) {
+  const key = request.socket.remoteAddress || "unknown";
+  const now = Date.now();
+  let bucket = loginBuckets.get(key);
+
+  if (!bucket || bucket.resetAt <= now) {
+    bucket = { count: 0, resetAt: now + LOGIN_RATE_LIMIT_WINDOW_MS };
+    loginBuckets.set(key, bucket);
+  }
+  if (loginBuckets.size > 10_000) {
+    for (const [address, saved] of loginBuckets) {
+      if (saved.resetAt <= now) loginBuckets.delete(address);
+    }
+  }
+  if (bucket.count >= LOGIN_RATE_LIMIT_ATTEMPTS) {
+    throw new HttpError(429, "Too many sign-in attempts. Wait 15 minutes and try again.");
+  }
+  bucket.count += 1;
+}
+
+function verifyAccessPassword(candidate) {
+  if (typeof candidate !== "string" || candidate.length > 1024 || !ACCESS_PASSWORD_DIGEST) {
+    return false;
+  }
+  const candidateDigest = createHash("sha256").update(candidate).digest();
+  return timingSafeEqual(candidateDigest, ACCESS_PASSWORD_DIGEST);
+}
+
+function createLoginSession(response, request) {
+  const now = Math.floor(Date.now() / 1000);
+  for (const [sessionId, expiry] of activeSessions) {
+    if (expiry <= now) activeSessions.delete(sessionId);
+  }
+
+  const session = {
+    v: 1,
+    sid: randomBytes(32).toString("base64url"),
+    exp: now + SESSION_TTL_SECONDS,
+  };
+  activeSessions.set(session.sid, session.exp);
+  const token = createSessionToken(session);
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  sendJson(response, 200, {
+    authenticationRequired: true,
+    authenticated: true,
+    expiresAt: new Date(session.exp * 1000).toISOString(),
+  }, {
+    "Set-Cookie": sessionCookie(token, SESSION_TTL_SECONDS),
+    "Cache-Control": "no-store",
+  });
+  loginBuckets.delete(request.socket.remoteAddress || "unknown");
 }
 
 function enforceRateLimit(request) {
@@ -254,6 +394,67 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (pathname === "/api/session") {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { error: "Method not allowed." });
+      return;
+    }
+
+    const session = getSession(request);
+    sendJson(response, 200, {
+      authenticationRequired: AUTH_REQUIRED,
+      authenticated: !AUTH_REQUIRED || Boolean(session),
+      ...(session ? { expiresAt: new Date(session.exp * 1000).toISOString() } : {}),
+    });
+    return;
+  }
+
+  if (pathname === "/api/login") {
+    if (request.method !== "POST") {
+      sendJson(response, 405, { error: "Method not allowed." });
+      return;
+    }
+    if (!AUTH_REQUIRED) {
+      sendJson(response, 200, { authenticationRequired: false, authenticated: true });
+      return;
+    }
+
+    try {
+      enforceLoginRateLimit(request);
+      const payload = await readJsonBody(request);
+      if (typeof payload?.password !== "string" || payload.password.length > 1024) {
+        throw new HttpError(400, "Enter the application access password.");
+      }
+      if (!verifyAccessPassword(payload.password)) {
+        throw new HttpError(401, "Invalid access password.");
+      }
+      createLoginSession(response, request);
+    } catch (error) {
+      const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+      sendJson(response, statusCode, {
+        error: statusCode === 500 ? "Unexpected server error." : error.message,
+      });
+    }
+    return;
+  }
+
+  if (pathname === "/api/logout") {
+    if (request.method !== "POST") {
+      sendJson(response, 405, { error: "Method not allowed." });
+      return;
+    }
+    const session = getSession(request);
+    if (session) activeSessions.delete(session.sid);
+    sendJson(response, 200, {
+      authenticationRequired: AUTH_REQUIRED,
+      authenticated: !AUTH_REQUIRED,
+    }, {
+      "Set-Cookie": clearSessionCookie(),
+      "Cache-Control": "no-store",
+    });
+    return;
+  }
+
   if (pathname === "/api/health" && request.method === "GET") {
     sendJson(response, 200, { status: "ok", aiConfigured: Boolean(API_KEY) });
     return;
@@ -267,6 +468,10 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method !== "POST") {
       sendJson(response, 405, { error: "Method not allowed." });
+      return;
+    }
+    if (AUTH_REQUIRED && !getSession(request)) {
+      sendJson(response, 401, { error: "Authentication required." });
       return;
     }
 

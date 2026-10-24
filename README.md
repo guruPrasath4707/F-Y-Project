@@ -66,7 +66,13 @@ npm start
 
 The Node server serves files from `dist/` and handles the `/api` endpoints on the same origin. Set `HOST=0.0.0.0` when your deployment platform requires binding to an external interface. Keep `GROQ_API_KEY` in the hosting provider's server-side environment settings; never add it to frontend build variables.
 
-**Do not expose this API publicly as-is.** It has a small in-memory per-IP request limit, but no authentication, account-level quotas, or durable distributed rate limiting. Before public deployment, add an appropriate authentication/authorization layer and shared rate limits, and configure provider spending limits. Otherwise, unauthenticated visitors may consume the server owner's provider quota.
+In production mode (`NODE_ENV=production`), the server requires a shared application password and a signing secret or refuses to start. Configure `APP_ACCESS_PASSWORD` with at least 12 characters and `SESSION_SECRET` with at least 32 random bytes. Generate a secret with:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+For local testing, set `AUTH_REQUIRED=true` to enable the same sign-in gate. The gate uses an eight-hour signed `HttpOnly; SameSite=Strict` cookie, an in-memory session registry that revokes sessions at logout, and an in-memory per-IP sign-in limit. Do not use the shared password as a substitute for individual accounts on a multi-user service. Before a broad public deployment, add a durable distributed rate limiter, shared session storage, individual user authorization, monitoring, and provider spending limits. The current per-IP request limiter and sessions are process-local, so horizontal replicas need shared infrastructure.
 
 ## Available API routes
 
@@ -97,4 +103,4 @@ GitHub Actions runs these checks on pushes and pull requests. Dependabot is conf
 
 ## Current limitations
 
-Conversation history is held in browser memory and is not persisted across reloads. Speech recognition and speech synthesis depend on browser support. There is no authentication or durable user/session storage yet.
+Conversation history is held in browser memory and is not persisted across reloads. Speech recognition and speech synthesis depend on browser support. Authentication is a single shared password, not individual accounts; active sessions are process-local and are not shared across multiple server replicas.

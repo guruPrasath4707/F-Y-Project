@@ -4,10 +4,12 @@ import ChatUI from "./components/ChatUI";
 import TextGenerator from "./pages/TextGenerator";
 import AIDocumentEditor from "./pages/AIDocumentEditor";
 import NotFound from "./pages/NotFound";
+import AuthGate from "./components/AuthGate";
 
 function App() {
   return (
     <Router>
+      <AuthGate>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/chat" element={<ChatUI />} />
@@ -15,6 +17,7 @@ function App() {
         <Route path="/ai-document-editor" element={<AIDocumentEditor />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </AuthGate>
     </Router>
   );
 }
