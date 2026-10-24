@@ -73,7 +73,7 @@ const TextGenerator = () => {
         {output && (
           <section className="mt-6 p-4 bg-gray-800 border border-gray-700 rounded-xl">
             <div className="flex items-center justify-between gap-3 mb-3">
-              <h2 className="text-lg font-semibold">Generated draft</h2>
+              <label htmlFor="text-output" className="text-lg font-semibold">Generated draft (editable)</label>
               <button
                 type="button"
                 onClick={handleCopy}
@@ -82,7 +82,17 @@ const TextGenerator = () => {
                 Copy text
               </button>
             </div>
-            <p className="whitespace-pre-wrap break-words">{output}</p>
+            <textarea
+              id="text-output"
+              value={output}
+              onChange={(event) => {
+                setOutput(event.target.value);
+                setCopyStatus("");
+              }}
+              className="w-full min-h-56 p-3 rounded-xl bg-gray-900 border border-gray-700 text-white outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              rows={9}
+              maxLength={20000}
+            />
             {copyStatus && <p role="status" aria-live="polite" className="text-sm text-gray-300 mt-2">{copyStatus}</p>}
           </section>
         )}
