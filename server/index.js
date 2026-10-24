@@ -36,23 +36,47 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
-async function readJsonBody(request) {
-  const chunks = [];
-  let size = 0;
+function readJsonBody(request) {
+  return new Promise((resolveBody, rejectBody) => {
+    const chunks = [];
+    let size = 0;
+    let tooLarge = false;
+    let settled = false;
 
-  for await (const chunk of request) {
-    size += chunk.length;
-    if (size > MAX_BODY_BYTES) {
-      throw new HttpError(413, "Request body is too large.");
-    }
-    chunks.push(chunk);
-  }
+    request.on("data", (chunk) => {
+      if (tooLarge || settled) return;
 
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-  } catch {
-    throw new HttpError(400, "Request body must be valid JSON.");
-  }
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        tooLarge = true;
+        chunks.length = 0;
+        settled = true;
+        rejectBody(new HttpError(413, "Request body is too large."));
+        // Keep consuming the request without buffering more data so the
+        // 413 response can be returned without retaining an oversized body.
+        request.resume();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    request.on("end", () => {
+      if (tooLarge || settled) return;
+      settled = true;
+
+      try {
+        resolveBody(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
+      } catch {
+        rejectBody(new HttpError(400, "Request body must be valid JSON."));
+      }
+    });
+
+    request.on("error", () => {
+      if (settled) return;
+      settled = true;
+      rejectBody(new HttpError(400, "Could not read request body."));
+    });
+  });
 }
 
 function enforceRateLimit(request) {
@@ -107,11 +131,14 @@ function createProviderMessages(route, payload) {
 }
 
 async function requestGroq(route, payload) {
+  // Validate user input before checking configuration, so malformed requests
+  // get a 400 response even when a deployment has not configured its API key.
+  const messages = createProviderMessages(route, payload);
+
   if (!API_KEY) {
     throw new HttpError(503, "AI service is not configured. Add GROQ_API_KEY to the server environment.");
   }
 
-  const messages = createProviderMessages(route, payload);
   let upstream;
 
   try {
