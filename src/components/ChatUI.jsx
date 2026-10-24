@@ -1,18 +1,23 @@
-import React, { useState, useRef, lazy, Suspense, useMemo, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Settings2, Volume2 } from "lucide-react";
 import VoiceAssistant from "./VoiceAssistant";
 import { fetchGroqResponse } from "../services/api";
+import { buildChatContext } from "../utils/chatContext";
 
 const ChatHistory = lazy(() => import("./ChatHistory"));
 
-const sanitizeResponse = (text) => {
-  return text
-    .replace(/[#*]/g, "") // Remove # and *
-    .replace(/\n/g, "<br />"); // Replace newlines with <br />
-};
+const createMessage = (text, sender) => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  text,
+  sender,
+  timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+});
 
 const ChatUI = () => {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState([
-    { text: "Hello! How can I help you?", sender: "assistant", timestamp: new Date().toLocaleTimeString() }
+    createMessage("Hello! How can I help you?", "assistant"),
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,190 +29,207 @@ const ChatUI = () => {
     rate: 1,
     volume: 1,
   });
+  const [voices, setVoices] = useState([]);
   const inputRef = useRef(null);
-  const synthRef = useRef(window.speechSynthesis);
-  const voicesRef = useRef([]);
+  const synthRef = useRef(typeof window !== "undefined" ? window.speechSynthesis : null);
 
-  // Load available voices
   useEffect(() => {
-    const loadVoices = () => {
-      voicesRef.current = synthRef.current.getVoices();
-    };
+    const synth = synthRef.current;
+    if (!synth) return undefined;
+
+    const loadVoices = () => setVoices(synth.getVoices());
     loadVoices();
-    if (synthRef.current.onvoiceschanged !== undefined) {
-      synthRef.current.onvoiceschanged = loadVoices;
-    }
+    synth.addEventListener?.("voiceschanged", loadVoices);
+
+    return () => synth.removeEventListener?.("voiceschanged", loadVoices);
   }, []);
 
-  // Function to speak text with custom settings
   const speakText = (text) => {
-    if (synthRef.current.speaking) {
-      synthRef.current.cancel(); // Stop any ongoing speech
-    }
-    const utterance = new SpeechSynthesisUtterance(text);
+    const synth = synthRef.current;
+    if (!synth || typeof window.SpeechSynthesisUtterance !== "function") return;
+
+    if (synth.speaking) synth.cancel();
+    const utterance = new window.SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
     utterance.voice = audioSettings.voice;
     utterance.pitch = audioSettings.pitch;
     utterance.rate = audioSettings.rate;
     utterance.volume = audioSettings.volume;
-    synthRef.current.speak(utterance);
+    synth.speak(utterance);
   };
 
-  // Stop speech synthesis when the component unmounts
-  useEffect(() => {
-    return () => {
-      if (synthRef.current.speaking) {
-        synthRef.current.cancel(); // Stop speech when the component unmounts
-      }
-    };
-  }, []); // Empty dependency array ensures this runs only on unmount
+  useEffect(() => () => {
+    synthRef.current?.cancel();
+  }, []);
 
   const handleSend = async (userText) => {
-    if (!userText.trim()) return;
+    const trimmedText = userText.trim();
+    if (!trimmedText || loading) return;
 
-    const newMessage = { text: userText, sender: "user", timestamp: new Date().toLocaleTimeString() };
-    const updatedMessages = [...messages, newMessage];
+    const userMessage = createMessage(trimmedText, "user");
+    const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+    setInput("");
     setLoading(true);
     setError(null);
 
     try {
-      const assistantReply = await fetchGroqResponse(updatedMessages);
-      const sanitizedReply = sanitizeResponse(assistantReply);
-      const sanitizedForAudio = assistantReply.replace(/[#*]/g, "");
-
-      const responseMessage = { text: sanitizedReply, sender: "assistant", timestamp: new Date().toLocaleTimeString() };
+      // Keep the visible transcript, but send only the newest context window
+      // permitted by server-side message and character limits.
+      const contextMessages = buildChatContext(updatedMessages);
+      const assistantReply = await fetchGroqResponse(contextMessages);
+      const responseMessage = createMessage(assistantReply, "assistant");
       setMessages([...updatedMessages, responseMessage]);
-      speakText(sanitizedForAudio);
-    } catch (error) {
-      console.error("Error fetching response:", error);
-      setError("Failed to fetch response. Please try again.");
+      speakText(assistantReply);
+    } catch (requestError) {
+      setError(requestError instanceof Error
+        ? requestError.message
+        : "The assistant could not respond. Please try again.");
     } finally {
       setLoading(false);
+      inputRef.current?.focus();
     }
-
-    setInput("");
-    inputRef.current?.focus();
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !loading) {
+  const handleKeyDown = (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !loading) {
+      event.preventDefault();
       handleSend(input);
     }
   };
 
-  const handleAudioSettingsChange = (e) => {
-    const { name, value } = e.target;
-    setAudioSettings((prev) => ({
-      ...prev,
-      [name]: name === "voice" ? voicesRef.current.find((v) => v.name === value) : parseFloat(value),
+  const handleAudioSettingsChange = (event) => {
+    const { name, value } = event.target;
+    setAudioSettings((previous) => ({
+      ...previous,
+      [name]: name === "voice"
+        ? voices.find((voice) => voice.name === value) ?? null
+        : Number.parseFloat(value),
     }));
   };
 
   const memoizedChatHistory = useMemo(() => (
-    <Suspense fallback={<div className="text-white text-center">Loading chat history...</div>}>
+    <Suspense fallback={<div className="text-gray-300 text-center p-4">Loading conversation…</div>}>
       <ChatHistory messages={messages} />
     </Suspense>
   ), [messages]);
 
   return (
-    <div className="flex flex-col justify-between w-screen h-screen p-5 bg-gray-900 text-white">
-      {memoizedChatHistory}
-
-      {error && <div className="text-red-500 text-center">{error}</div>}
-
-      <button
-        onClick={() => setShowSettings(!showSettings)}
-        className="fixed top-5 right-5 p-2 bg-blue-500 rounded-full hover:bg-blue-600"
-        aria-label="Audio Settings"
-      >
-        ⚙️
-      </button>
+    <main className="flex flex-col w-full h-dvh max-w-5xl mx-auto p-3 sm:p-5 bg-gray-900 text-white">
+      <header className="flex items-center justify-between gap-3 pb-4 border-b border-gray-700">
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+        >
+          <ArrowLeft size={18} aria-hidden="true" />
+          <span>Home</span>
+        </button>
+        <div className="min-w-0 text-center">
+          <h1 className="font-semibold text-lg">AI Companion</h1>
+          <p className="text-xs text-gray-400">Conversation workspace</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowSettings((visible) => !visible)}
+          className="inline-flex items-center justify-center rounded-lg p-2 text-gray-300 hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+          aria-expanded={showSettings}
+          aria-label="Toggle audio settings"
+        >
+          <Settings2 size={20} aria-hidden="true" />
+        </button>
+      </header>
 
       {showSettings && (
-        <div className="fixed top-16 right-5 bg-gray-800 p-4 rounded-lg shadow-lg w-64">
-          <h3 className="text-lg font-bold mb-4">Audio Settings</h3>
+        <section className="self-end mt-3 bg-gray-800 border border-gray-700 p-4 rounded-xl shadow-lg w-full max-w-sm">
+          <h2 className="font-semibold mb-4 inline-flex items-center gap-2">
+            <Volume2 size={18} aria-hidden="true" /> Audio settings
+          </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Voice</label>
+              <label htmlFor="voice" className="block text-sm font-medium mb-1">Voice</label>
               <select
+                id="voice"
                 name="voice"
-                value={audioSettings.voice?.name || ""}
+                value={audioSettings.voice?.name ?? ""}
                 onChange={handleAudioSettingsChange}
                 className="w-full p-2 bg-gray-700 rounded-md"
               >
-                {voicesRef.current.map((voice) => (
-                  <option key={voice.name} value={voice.name}>
-                    {voice.name}
-                  </option>
+                <option value="">Browser default</option>
+                {voices.map((voice) => (
+                  <option key={voice.name} value={voice.name}>{voice.name}</option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Pitch</label>
-              <input
-                type="range"
-                name="pitch"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={audioSettings.pitch}
-                onChange={handleAudioSettingsChange}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Rate</label>
-              <input
-                type="range"
-                name="rate"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={audioSettings.rate}
-                onChange={handleAudioSettingsChange}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Volume</label>
-              <input
-                type="range"
-                name="volume"
-                min="0"
-                max="1"
-                step="0.1"
-                value={audioSettings.volume}
-                onChange={handleAudioSettingsChange}
-                className="w-full"
-              />
-            </div>
+            {[
+              { name: "pitch", label: "Pitch", min: "0.5", max: "2", step: "0.1" },
+              { name: "rate", label: "Rate", min: "0.5", max: "2", step: "0.1" },
+              { name: "volume", label: "Volume", min: "0", max: "1", step: "0.1" },
+            ].map((setting) => (
+              <div key={setting.name}>
+                <label htmlFor={setting.name} className="flex justify-between text-sm font-medium mb-1">
+                  <span>{setting.label}</span>
+                  <span>{audioSettings[setting.name].toFixed(1)}</span>
+                </label>
+                <input
+                  id={setting.name}
+                  type="range"
+                  name={setting.name}
+                  min={setting.min}
+                  max={setting.max}
+                  step={setting.step}
+                  value={audioSettings[setting.name]}
+                  onChange={handleAudioSettingsChange}
+                  className="w-full"
+                />
+              </div>
+            ))}
           </div>
+        </section>
+      )}
+
+      <section className="flex-1 min-h-0 py-4" aria-label="Chat messages">
+        {memoizedChatHistory}
+      </section>
+
+      {error && (
+        <div role="alert" className="mb-3 rounded-lg border border-red-800 bg-red-950/50 p-3 text-sm text-red-200">
+          {error}
         </div>
       )}
 
-      <div className="flex items-center gap-3 bg-gray-800 p-4 rounded-xl w-full">
+      <form
+        className="flex items-center gap-2 sm:gap-3 bg-gray-800 border border-gray-700 p-2 sm:p-3 rounded-2xl"
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSend(input);
+        }}
+      >
         <VoiceAssistant onVoiceInput={handleSend} />
         <input
           ref={inputRef}
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(event) => setInput(event.target.value)}
           onKeyDown={handleKeyDown}
-          className="flex-1 p-3 rounded-md bg-gray-700 text-white outline-none"
-          placeholder="Type a message..."
-          aria-label="Type a message"
+          className="min-w-0 flex-1 p-3 rounded-xl bg-gray-700 text-white outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          placeholder="Ask a question…"
+          aria-label="Message the AI assistant"
+          autoComplete="off"
+          maxLength={8000}
         />
         <button
-          onClick={() => handleSend(input)}
-          disabled={loading}
-          className={`p-3 rounded-md ${loading ? "bg-gray-600" : "bg-blue-500 hover:bg-blue-600"} text-white`}
-          aria-label="Send message"
+          type="submit"
+          disabled={loading || !input.trim()}
+          className="px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium"
         >
-          {loading ? "Loading..." : "Send"}
+          {loading ? "Sending…" : "Send"}
         </button>
-      </div>
-    </div>
+      </form>
+      <p className="text-xs text-gray-500 text-center mt-2">
+        AI responses can be inaccurate. Avoid sharing passwords or sensitive personal data.
+      </p>
+    </main>
   );
 };
 
