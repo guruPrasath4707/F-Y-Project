@@ -10,13 +10,13 @@ function App() {
   return (
     <Router>
       <AuthGate>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/chat" element={<ChatUI />} />
-        <Route path="/text-generator" element={<TextGenerator />} />
-        <Route path="/ai-document-editor" element={<AIDocumentEditor />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/chat" element={<ChatUI />} />
+          <Route path="/text-generator" element={<TextGenerator />} />
+          <Route path="/ai-document-editor" element={<AIDocumentEditor />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
       </AuthGate>
     </Router>
   );

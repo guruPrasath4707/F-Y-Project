@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../components/AuthGate";
 
 const Home = () => {
-  const { authenticationRequired, logout } = useAuth();
+  const { authenticationRequired, logout, logoutError } = useAuth();
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-5">
@@ -11,6 +11,7 @@ const Home = () => {
         A focused workspace for conversation, first drafts, and clearer writing.
       </p>
       {authenticationRequired && (
+        <>
         <button
           type="button"
           onClick={logout}
@@ -18,6 +19,8 @@ const Home = () => {
         >
           Sign out
         </button>
+        {logoutError && <p role="alert" className="mb-8 text-sm text-red-300">{logoutError}</p>}
+        </>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl">
         <Link

@@ -207,7 +207,6 @@ function createLoginSession(response, request) {
   };
   activeSessions.set(session.sid, session.exp);
   const token = createSessionToken(session);
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   sendJson(response, 200, {
     authenticationRequired: true,
     authenticated: true,

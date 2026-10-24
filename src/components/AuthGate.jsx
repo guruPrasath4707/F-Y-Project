@@ -20,6 +20,7 @@ const AuthGate = ({ children }) => {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -92,12 +93,13 @@ const AuthGate = ({ children }) => {
   };
 
   const logout = async () => {
+    setLogoutError("");
     try {
-      await fetch("/api/logout", {
+      const response = await fetch("/api/logout", {
         method: "POST",
         credentials: "same-origin",
       });
-    } finally {
+      if (!response.ok) throw new Error("Sign-out request failed.");
       setStatus((previous) => ({
         ...previous,
         authenticationRequired: true,
@@ -105,6 +107,8 @@ const AuthGate = ({ children }) => {
       }));
       setPassword("");
       setLoginError("");
+    } catch {
+      setLogoutError("Could not sign out. Check the connection and try again.");
     }
   };
 
@@ -174,6 +178,7 @@ const AuthGate = ({ children }) => {
       authenticationRequired: status.authenticationRequired,
       authenticated: status.authenticated,
       logout,
+      logoutError,
     }}>
       {children}
     </AuthContext.Provider>
