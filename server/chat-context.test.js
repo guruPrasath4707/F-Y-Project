@@ -32,7 +32,7 @@ test("chat context keeps the newest messages when the message-count limit is rea
 
 test("chat context drops older history before exceeding the character limit", () => {
   const messages = [
-    message("old context ".repeat(1_000), 1),
+    message("old context ".repeat(1_500), 1),
     message("recent context ".repeat(700), 2),
     message("current prompt", 3),
   ];
