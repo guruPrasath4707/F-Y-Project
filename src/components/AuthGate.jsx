@@ -1,13 +1,6 @@
 import PropTypes from "prop-types";
-import { createContext, useContext, useEffect, useState } from "react";
-
-const AuthContext = createContext({
-  authenticationRequired: false,
-  authenticated: true,
-  logout: async () => {},
-});
-
-export const useAuth = () => useContext(AuthContext);
+import { useEffect, useState } from "react";
+import { AuthContext } from "../auth/authContext";
 
 const AuthGate = ({ children }) => {
   const [retryCount, setRetryCount] = useState(0);

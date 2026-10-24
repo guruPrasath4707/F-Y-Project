@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useAuth } from "../components/AuthGate";
+import { useAuth } from "../auth/authContext";
 
 const Home = () => {
   const { authenticationRequired, logout, logoutError } = useAuth();
@@ -12,14 +12,14 @@ const Home = () => {
       </p>
       {authenticationRequired && (
         <>
-        <button
+          <button
           type="button"
           onClick={logout}
           className="mb-8 rounded-lg border border-gray-600 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
         >
-          Sign out
-        </button>
-        {logoutError && <p role="alert" className="mb-8 text-sm text-red-300">{logoutError}</p>}
+            Sign out
+          </button>
+          {logoutError && <p role="alert" className="mb-8 text-sm text-red-300">{logoutError}</p>}
         </>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl">
