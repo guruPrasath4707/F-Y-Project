@@ -151,8 +151,9 @@ async function requestGroq(route, payload) {
       body: JSON.stringify({
         model: MODEL,
         messages,
-        max_tokens: route === "/api/chat" ? 900 : route === "/api/text" ? 900 : 1400,
+        max_completion_tokens: route === "/api/chat" ? 1600 : route === "/api/text" ? 1800 : 2200,
         temperature: route === "/api/document" ? 0.3 : 0.7,
+        reasoning_format: "hidden",
       }),
       signal: AbortSignal.timeout(60_000),
     });
